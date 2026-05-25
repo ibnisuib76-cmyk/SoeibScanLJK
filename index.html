@@ -130,10 +130,10 @@
                 </span>
               </div>
 
-              <!-- Video Frame / Canvas Wrapper -->
-              <div class="relative w-full aspect-video bg-slate-950 rounded-xl overflow-hidden shadow-inner border border-slate-900 group">
+              <!-- Video Frame / Canvas Wrapper (Diubah menjadi adaptif 9:16 di HP, 16:9 di desktop) -->
+              <div class="relative w-full aspect-[9/16] sm:aspect-video bg-slate-950 rounded-xl overflow-hidden shadow-inner border border-slate-900 group max-h-[75vh] sm:max-h-none">
                 <video id="videoElement" autoplay playsinline class="w-full h-full object-cover hidden"></video>
-                <canvas id="canvasElement" class="w-full h-full object-contain"></canvas>
+                <canvas id="canvasElement" class="w-full h-full object-cover"></canvas>
                 
                 <!-- Dynamic Custom Scan Area Guide Overlay -->
                 <div id="cameraOverlay" class="absolute inset-0 pointer-events-none hidden flex items-center justify-center">
@@ -399,10 +399,12 @@
     // Global variable to keep track of the most recent scanned pattern
     let lastDetectedAnswers = {};
     
-    // UI Elements
-    const cvStatus = document.getElementById('cvStatus');
-    const imageUpload = document.getElementById('imageUpload');
-    const btnRecordAsKey = document.getElementById('btnRecordAsKey');
+    // UI Elements (Dideklarasikan secara global dan di-assign saat DOM siap)
+    let cvStatus;
+    let imageUpload;
+    let btnRecordAsKey;
+    let settingNumQuestions;
+    let settingNumOptions;
 
     // Handle view switches
     document.querySelectorAll('.sidebar-link').forEach(link => {
@@ -431,8 +433,13 @@
 
       video = document.getElementById('videoElement');
       canvas = document.getElementById('canvasElement');
+      cvStatus = document.getElementById('cvStatus');
+      imageUpload = document.getElementById('imageUpload');
+      btnRecordAsKey = document.getElementById('btnRecordAsKey');
+      settingNumQuestions = document.getElementById('settingNumQuestions');
+      settingNumOptions = document.getElementById('settingNumOptions');
       
-      if (!canvas || !video) {
+      if (!canvas || !video || !settingNumQuestions || !settingNumOptions) {
         setTimeout(initializeElements, 50);
         return;
       }
@@ -466,6 +473,42 @@
       // Action listener for Record As Key feature
       if (btnRecordAsKey) {
         btnRecordAsKey.addEventListener('click', recordCurrentPatternAsKey);
+      }
+
+      // FITUR BARU: Deteksi otomatis perubahan input Jumlah Soal secara realtime
+      settingNumQuestions.addEventListener('input', (e) => {
+        let val = parseInt(e.target.value);
+        if (!isNaN(val) && val >= 1 && val <= 100) {
+          appState.numQuestions = val;
+          // Pastikan array kunci jawaban terisi untuk index yang baru dibuat
+          for (let i = 1; i <= appState.numQuestions; i++) {
+            if (!appState.answerKeys[i]) {
+              appState.answerKeys[i] = 'A';
+            }
+          }
+          buildAnswerKeyUI();
+        }
+      });
+
+      // FITUR BARU: Deteksi otomatis perubahan pilihan jawaban (A-D / A-E)
+      settingNumOptions.addEventListener('change', (e) => {
+        let val = parseInt(e.target.value);
+        if (!isNaN(val)) {
+          appState.numOptions = val;
+          buildAnswerKeyUI();
+        }
+      });
+
+      // Pemuatan tombol Simpan dan Reset pengaturan di dalam inisialisasi aman
+      const btnSaveSettings = document.getElementById('btnSaveSettings');
+      if (btnSaveSettings) btnSaveSettings.addEventListener('click', saveSettings);
+
+      const btnResetSettings = document.getElementById('btnResetSettings');
+      if (btnResetSettings) btnResetSettings.addEventListener('click', resetSettings);
+
+      // Listener Upload Berkas Foto
+      if (imageUpload) {
+        imageUpload.addEventListener('change', handleImageUpload);
       }
 
       loadSavedSettings();
@@ -653,8 +696,8 @@
       if (saved) {
         try {
           appState = JSON.parse(saved);
-          document.getElementById('settingNumQuestions').value = appState.numQuestions;
-          document.getElementById('settingNumOptions').value = appState.numOptions;
+          if (settingNumQuestions) settingNumQuestions.value = appState.numQuestions;
+          if (settingNumOptions) settingNumOptions.value = appState.numOptions;
           document.getElementById('weightCorrect').value = appState.weightCorrect;
           document.getElementById('weightWrong').value = appState.weightWrong;
           document.getElementById('weightEmpty').value = appState.weightEmpty;
@@ -673,9 +716,8 @@
     }
 
     function saveSettings() {
-      let numQVal = parseInt(document.getElementById('settingNumQuestions').value);
+      let numQVal = parseInt(settingNumQuestions.value);
       
-      // Validasi agar jumlah soal minimal adalah 1 dan maksimal 100 demi performa
       if (isNaN(numQVal) || numQVal < 1) {
         showToast("Jumlah soal harus diisi angka minimal 1!", "error");
         return;
@@ -683,11 +725,11 @@
       if (numQVal > 100) {
         showToast("Jumlah soal maksimal dibatasi 100 demi stabilitas pemrosesan OpenCV!", "warning");
         numQVal = 100;
-        document.getElementById('settingNumQuestions').value = 100;
+        settingNumQuestions.value = 100;
       }
 
       appState.numQuestions = numQVal;
-      appState.numOptions = parseInt(document.getElementById('settingNumOptions').value);
+      appState.numOptions = parseInt(settingNumOptions.value);
       appState.weightCorrect = parseFloat(document.getElementById('weightCorrect').value);
       appState.weightWrong = parseFloat(document.getElementById('weightWrong').value);
       appState.weightEmpty = parseFloat(document.getElementById('weightEmpty').value);
@@ -705,6 +747,27 @@
       if (!isScanning) {
         evaluateCurrentCanvas();
       }
+    }
+
+    function resetSettings() {
+      localStorage.removeItem('soeib_ljk_config');
+      appState = {
+        numQuestions: 10,
+        numOptions: 5,
+        weightCorrect: 4,
+        weightWrong: -1,
+        weightEmpty: 0,
+        answerKeys: { 1:'A', 2:'B', 3:'C', 4:'D', 5:'E', 6:'A', 7:'B', 8:'C', 9:'D', 10:'E' }
+      };
+      
+      if (settingNumQuestions) settingNumQuestions.value = 10;
+      if (settingNumOptions) settingNumOptions.value = 5;
+      document.getElementById('weightCorrect').value = 4;
+      document.getElementById('weightWrong').value = -1;
+      document.getElementById('weightEmpty').value = 0;
+      
+      buildAnswerKeyUI();
+      showToast("Pengaturan dikembalikan ke default.", "info");
     }
 
     // --- INTERACTIVE KEY BUILDER ---
@@ -804,7 +867,7 @@
     }
 
     // --- IMAGE UPLOADER ---
-    imageUpload.addEventListener('change', (e) => {
+    function handleImageUpload(e) {
       const file = e.target.files[0];
       if (!file) return;
 
@@ -831,7 +894,7 @@
         img.src = event.target.value || event.target.result;
       };
       reader.readAsDataURL(file);
-    });
+    }
 
     // --- LOOP SCAN TIMER ---
     function scanLoop() {
